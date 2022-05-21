@@ -171,7 +171,7 @@ class NFCTagInfo:
         return f"TagInfo<type={self.tag_type}, info={self.tag_info}>"
 
 
-class NFCSelectRequestMessage(ctypes.Structure):
+class NFCSelectTagMessage(ctypes.Structure):
     def __init__(self, tag_type, tag_uid):
         self.tag_type = tag_type
         self.tag_uid = tag_uid
@@ -185,24 +185,25 @@ class NFCSelectRequestMessage(ctypes.Structure):
             NFC_TAG_TYPE_ISO14443A_T4T,
             NFC_TAG_TYPE_ISO14443A_T4T_NFCDEP,
         ):
-            payload = struct.pack("B", len(uid)) + bytes(self.uid)
+            payload = bytes([self.tag_type, len(self.tag_uid)]) + self.tag_uid
         else:
-            payload = bytes(self.uid)
-        header = bytes(NFCMessageHeader(NFC_SELECT_REQUEST_MESSAGE_TYPE, len(payload)))
+            payload = bytes([self.tag_type]) + self.tag_uid
+        header = bytes(NFCMessageHeader(NFC_SELECT_TAG_MESSAGE_TYPE, len(payload)))
         return header + payload
 
 
-NFC_TRANSCEIVE_FLAGS_NOCRC = 1
-NFC_TRANSCEIVE_FLAGS_RAW = 3  # No CRC and no Parity
-NFC_TRANSCEIVE_FLAGS_BITS = 4  # TX and RX partial bits, tx_count in bits
-NFC_TRANSCEIVE_FLAGS_TX_ONLY = 8  # Do not receive data
-NFC_TRANSCEIVE_FLAGS_ERROR = (
-    128  # Transceive failed, chip is unselected and field is turned off.
-)
+NFC_TRANSCEIVE_FLAGS_NOCRC = 1 << 0
+NFC_TRANSCEIVE_FLAGS_NOPARITY = 1 << 1
+# TX and RX partial bits, tx_count in bits
+NFC_TRANSCEIVE_FLAGS_BITS = 1 << 2
+# Do not receive data
+NFC_TRANSCEIVE_FLAGS_TX_ONLY = 1 << 3
+# Transceive failed, chip is unselected and field is turned off.
+NFC_TRANSCEIVE_FLAGS_ERROR = 1 << 7
 
 
 class NFCTransceiveFrameRequestMessage:
-    def __init__(self, data, flags = 0, tx_count = None):
+    def __init__(self, data, flags=0, tx_count=None):
         self.data = data
         self.flags = flags
         self.tx_count = tx_count or len(data)
