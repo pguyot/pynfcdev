@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='pynfcdev',
-    version='0.1.0',    
+    version='0.2.0',
     description='Python package to use /dev/nfc* interface provided by ST25R391x driver',
     url='https://github.com/pguyot/pynfcdev',
     author='Paul Guyot',

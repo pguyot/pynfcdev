@@ -202,10 +202,10 @@ NFC_TRANSCEIVE_FLAGS_ERROR = (
 
 
 class NFCTransceiveFrameRequestMessage:
-    def __init__(self, tx_count, flags, data):
-        self.tx_count = tx_count
-        self.flags = flags
+    def __init__(self, data, flags = 0, tx_count = None):
         self.data = data
+        self.flags = flags
+        self.tx_count = tx_count or len(data)
 
     def __bytes__(self):
         payload = struct.pack("=HB", self.tx_count, self.flags) + self.data
