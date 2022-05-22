@@ -1,70 +1,101 @@
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 import os
 import fcntl
 import array
 import struct
 import ctypes
+from enum import IntEnum, IntFlag
 from io import FileIO
 from ioctl_opt import IOR
 
 NFC_RD_GET_PROTOCOL_VERSION = IOR(ord("N"), 0, ctypes.c_uint64)
 NFC_PROTOCOL_VERSION_1 = 0x004E464300000001
 
-NFC_IDENTIFY_REQUEST_MESSAGE_TYPE = 0
-NFC_IDENTIFY_RESPONSE_MESSAGE_TYPE = 1
-NFC_IDLE_MODE_REQUEST_MESSAGE_TYPE = 2
-NFC_IDLE_MODE_ACKNOWLEDGE_MESSAGE_TYPE = 3
-NFC_DISCOVER_MODE_REQUEST_MESSAGE_TYPE = 4
-NFC_DETECTED_TAG_MESSAGE_TYPE = 5
-NFC_SELECT_TAG_MESSAGE_TYPE = 6
-NFC_SELECTED_TAG_MESSAGE_TYPE = 7
-NFC_TRANSCEIVE_FRAME_REQUEST_MESSAGE_TYPE = 8
-NFC_TRANSCEIVE_FRAME_RESPONSE_MESSAGE_TYPE = 9
 
-NFC_TAG_TYPE_ISO14443A = 1
-NFC_TAG_TYPE_ISO14443A_T2T = 2
-NFC_TAG_TYPE_MIFARE_CLASSIC = 3
-NFC_TAG_TYPE_ISO14443A_NFCDEP = 4
-NFC_TAG_TYPE_ISO14443A_T4T = 6
-NFC_TAG_TYPE_ISO14443A_T4T_NFCDEP = 7
-NFC_TAG_TYPE_ISO14443B = 16
-NFC_TAG_TYPE_ST25TB = 17
-NFC_TAG_TYPE_NFCF = 24
+class NFCMessageType(IntEnum):
+    IDENTIFY_REQUEST = 0
+    IDENTIFY_RESPONSE = 1
+    IDLE_MODE_REQUEST = 2
+    IDLE_MODE_ACKNOWLEDGE = 3
+    DISCOVER_MODE_REQUEST = 4
+    DETECTED_TAG = 5
+    SELECT_TAG = 6
+    SELECTED_TAG = 7
+    TRANSCEIVE_FRAME_REQUEST = 8
+    TRANSCEIVE_FRAME_RESPONSE = 9
 
-NFC_TAG_PROTOCOL_ISO14443A = 1 << NFC_TAG_TYPE_ISO14443A
-NFC_TAG_PROTOCOL_ISO14443A_T2T = 1 << NFC_TAG_TYPE_ISO14443A_T2T
-NFC_TAG_PROTOCOL_MIFARE_CLASSIC = 1 << NFC_TAG_TYPE_MIFARE_CLASSIC
-NFC_TAG_PROTOCOL_ISO14443A_NFCDEP = 1 << NFC_TAG_TYPE_ISO14443A_NFCDEP
-NFC_TAG_PROTOCOL_ISO14443A4 = 1 << 5
-NFC_TAG_PROTOCOL_ISO14443A_T4T = 1 << NFC_TAG_TYPE_ISO14443A_T4T
-NFC_TAG_PROTOCOL_ISO14443A_T4T_NFCDEP = 1 << NFC_TAG_TYPE_ISO14443A_T4T_NFCDEP
 
-NFC_TAG_PROTOCOL_ISO14443B = 1 << NFC_TAG_TYPE_ISO14443B
-NFC_TAG_PROTOCOL_ST25TB = 1 << NFC_TAG_TYPE_ST25TB
+class NFCTagType(IntEnum):
+    ISO14443A = 1
+    ISO14443A_T2T = 2
+    MIFARE_CLASSIC = 3
+    ISO14443A_NFCDEP = 4
+    ISO14443A_T4T = 6
+    ISO14443A_T4T_NFCDEP = 7
+    ISO14443B = 16
+    ST25TB = 17
+    NFCF = 24
 
-NFC_TAG_PROTOCOL_NFCF = 1 << NFC_TAG_TYPE_NFCF
+    def is_iso14443a(self):
+        return self.value in (
+            NFCTagType.ISO14443A,
+            NFCTagType.ISO14443A_T2T,
+            NFCTagType.MIFARE_CLASSIC,
+            NFCTagType.ISO14443A_NFCDEP,
+            NFCTagType.ISO14443A_T4T,
+            NFCTagType.ISO14443A_T4T_NFCDEP,
+        )
 
-NFC_TAG_PROTOCOL_ALL = (
-    NFC_TAG_PROTOCOL_ISO14443A
-    | NFC_TAG_PROTOCOL_ISO14443A_T2T
-    | NFC_TAG_PROTOCOL_MIFARE_CLASSIC
-    | NFC_TAG_PROTOCOL_ISO14443A_NFCDEP
-    | NFC_TAG_PROTOCOL_ISO14443A4
-    | NFC_TAG_PROTOCOL_ISO14443A_T4T
-    | NFC_TAG_PROTOCOL_ISO14443A_T4T_NFCDEP
-    | NFC_TAG_PROTOCOL_ISO14443B
-    | NFC_TAG_PROTOCOL_ST25TB
-    | NFC_TAG_PROTOCOL_NFCF
-)
+    def is_iso14443a4(self):
+        return self.value in (NFCTagType.ISO14443A_T4T, NFCTagType.ISO14443A_T4T_NFCDEP)
 
-NFC_DISCOVER_FLAGS_SELECT = 1
+
+class NFCTagProtocol(IntFlag):
+    ISO14443A = 1 << NFCTagType.ISO14443A
+    ISO14443A_T2T = 1 << NFCTagType.ISO14443A_T2T
+    MIFARE_CLASSIC = 1 << NFCTagType.MIFARE_CLASSIC
+    ISO14443A_NFCDEP = 1 << NFCTagType.ISO14443A_NFCDEP
+    ISO14443A4 = 1 << 5
+    ISO14443A_T4T = 1 << NFCTagType.ISO14443A_T4T
+    ISO14443A_T4T_NFCDEP = 1 << NFCTagType.ISO14443A_T4T_NFCDEP
+
+    ISO14443B = 1 << NFCTagType.ISO14443B
+    ST25TB = 1 << NFCTagType.ST25TB
+
+    NFCF = 1 << NFCTagType.NFCF
+
+    ALL = (
+        ISO14443A
+        | ISO14443A_T2T
+        | MIFARE_CLASSIC
+        | ISO14443A_NFCDEP
+        | ISO14443A4
+        | ISO14443A_T4T
+        | ISO14443A_T4T_NFCDEP
+        | ISO14443B
+        | ST25TB
+        | NFCF
+    )
+
+    @staticmethod
+    def type_to_most_specific_protocol(tag_type):
+        return NFCTagProtocol(1 << int(tag_type))
+
+    @staticmethod
+    def type_to_most_generic_protocol(tag_type):
+        if tag_type.is_iso14443a():
+            return NFCTagProtocol.ISO14443A
+        else:
+            return NFCTagProtocol.type_to_most_specific_protocol(tag_type)
+
+
+class NFCDiscoverFlags(IntFlag):
+    SELECT = 1
+
 
 T2T_COMMAND_READ_BLOCK = 0x30
 T2T_COMMAND_WRITE_BLOCK = 0xA2
-
-ST25TB_COMMAND_READ_BLOCK = 0x08
-ST25TB_COMMAND_WRITE_BLOCK = 0x09
 
 
 class NFCMessageHeader(ctypes.Structure):
@@ -78,7 +109,7 @@ class NFCMessageHeader(ctypes.Structure):
 
 class NFCIdentityRequestMessage(NFCMessageHeader):
     def __init__(self):
-        super().__init__(NFC_IDENTIFY_REQUEST_MESSAGE_TYPE, 0)
+        super().__init__(NFCMessageType.IDENTIFY_REQUEST, 0)
 
 
 class NFCDiscoverModeRequestMessage(ctypes.Structure):
@@ -94,7 +125,7 @@ class NFCDiscoverModeRequestMessage(ctypes.Structure):
     ]
 
     def __init__(self, protocols, polling_period, device_count, max_bitrate, flags):
-        self.message_type = NFC_DISCOVER_MODE_REQUEST_MESSAGE_TYPE
+        self.message_type = NFCMessageType.DISCOVER_MODE_REQUEST
         self.payload_length = 15
         self.protocols = protocols
         self.polling_period = polling_period
@@ -105,7 +136,7 @@ class NFCDiscoverModeRequestMessage(ctypes.Structure):
 
 class NFCIdleModeRequestMessage(NFCMessageHeader):
     def __init__(self):
-        super().__init__(NFC_IDLE_MODE_REQUEST_MESSAGE_TYPE, 0)
+        super().__init__(NFCMessageType.IDLE_MODE_REQUEST, 0)
 
 
 class NFCTagInfoISO14443A:
@@ -114,6 +145,9 @@ class NFCTagInfoISO14443A:
         self.sak = packed[2]
         uid_len = packed[3]
         self.uid = packed[4 : 4 + uid_len]
+
+    def tag_id(self):
+        return self.uid
 
     def __str__(self):
         return f"<atqa={self.atqa}, sak={self.sak}, uid={self.uid}>"
@@ -135,6 +169,9 @@ class NFCTagInfoISO14443B:
         self.application_data = packed[4:8]
         self.protocol_info = packed[8:11]
 
+    def tag_id(self):
+        return self.pupi
+
     def __str__(self):
         return f"<pupi={self.pupi}, application_data={self.application_data}, protocol_info={self.protocol_info}>"
 
@@ -143,28 +180,31 @@ class NFCTagInfoST25TB:
     def __init__(self, packed):
         self.uid = packed[0:8]
 
+    def tag_id(self):
+        return self.uid
+
     def __str__(self):
         return f"<uid={self.uid}>"
 
 
 class NFCTagInfo:
     def __init__(self, packed):
-        self.tag_type = packed[0]
+        self.tag_type = NFCTagType(packed[0])
         if (
-            packed[0] == NFC_TAG_TYPE_ISO14443A
-            or packed[0] == NFC_TAG_TYPE_ISO14443A_T2T
-            or packed[0] == NFC_TAG_TYPE_MIFARE_CLASSIC
-            or packed[0] == NFC_TAG_TYPE_ISO14443A_NFCDEP
+            packed[0] == NFCTagType.ISO14443A
+            or packed[0] == NFCTagType.ISO14443A_T2T
+            or packed[0] == NFCTagType.MIFARE_CLASSIC
+            or packed[0] == NFCTagType.ISO14443A_NFCDEP
         ):
             self.tag_info = NFCTagInfoISO14443A(packed[1:])
         elif (
-            packed[0] == NFC_TAG_TYPE_ISO14443A_T4T
-            or packed[0] == NFC_TAG_TYPE_ISO14443A_T4T_NFCDEP
+            packed[0] == NFCTagType.ISO14443A_T4T
+            or packed[0] == NFCTagType.ISO14443A_T4T_NFCDEP
         ):
             self.tag_info = NFCTagInfoISO14443A4(packed[1:])
-        elif packed[0] == NFC_TAG_TYPE_ISO14443B:
+        elif packed[0] == NFCTagType.ISO14443B:
             self.tag_info = NFCTagInfoISO14443B(packed[1:])
-        elif packed[0] == NFC_TAG_TYPE_ST25TB:
+        elif packed[0] == NFCTagType.ST25TB:
             self.tag_info = NFCTagInfoST25TB(packed[1:])
 
     def __str__(self):
@@ -177,29 +217,23 @@ class NFCSelectTagMessage(ctypes.Structure):
         self.tag_uid = tag_uid
 
     def __bytes__(self):
-        if self.tag_type in (
-            NFC_TAG_TYPE_ISO14443A,
-            NFC_TAG_TYPE_ISO14443A_T2T,
-            NFC_TAG_TYPE_MIFARE_CLASSIC,
-            NFC_TAG_TYPE_ISO14443A_NFCDEP,
-            NFC_TAG_TYPE_ISO14443A_T4T,
-            NFC_TAG_TYPE_ISO14443A_T4T_NFCDEP,
-        ):
+        if self.tag_type.is_iso14443a():
             payload = bytes([self.tag_type, len(self.tag_uid)]) + self.tag_uid
         else:
             payload = bytes([self.tag_type]) + self.tag_uid
-        header = bytes(NFCMessageHeader(NFC_SELECT_TAG_MESSAGE_TYPE, len(payload)))
+        header = bytes(NFCMessageHeader(NFCMessageType.SELECT_TAG, len(payload)))
         return header + payload
 
 
-NFC_TRANSCEIVE_FLAGS_NOCRC = 1 << 0
-NFC_TRANSCEIVE_FLAGS_NOPARITY = 1 << 1
-# TX and RX partial bits, tx_count in bits
-NFC_TRANSCEIVE_FLAGS_BITS = 1 << 2
-# Do not receive data
-NFC_TRANSCEIVE_FLAGS_TX_ONLY = 1 << 3
-# Transceive failed, chip is unselected and field is turned off.
-NFC_TRANSCEIVE_FLAGS_ERROR = 1 << 7
+class NFCTransceiveFlags(IntFlag):
+    NOCRC = 1 << 0
+    NOPARITY = 1 << 1
+    # TX and RX partial bits, tx_count in bits
+    BITS = 1 << 2
+    # Do not receive data
+    TX_ONLY = 1 << 3
+    # Transceive failed, chip is unselected and field is turned off.
+    ERROR = 1 << 7
 
 
 class NFCTransceiveFrameRequestMessage:
@@ -209,9 +243,9 @@ class NFCTransceiveFrameRequestMessage:
         self.tx_count = tx_count or len(data)
 
     def __bytes__(self):
-        payload = struct.pack("=HB", self.tx_count, self.flags) + self.data
+        payload = struct.pack("=HB", self.tx_count, int(self.flags)) + self.data
         header = bytes(
-            NFCMessageHeader(NFC_TRANSCEIVE_FRAME_REQUEST_MESSAGE_TYPE, len(payload))
+            NFCMessageHeader(NFCMessageType.TRANSCEIVE_FRAME_REQUEST, len(payload))
         )
         return header + payload
 
@@ -253,7 +287,7 @@ class NFCDev:
     def get_identify_chip_model(self):
         self.write_message(NFCIdentityRequestMessage())
         header, payload = self.read_message()
-        if header.message_type != NFC_IDENTIFY_RESPONSE_MESSAGE_TYPE:
+        if header.message_type != NFCMessageType.IDENTIFY_RESPONSE:
             raise ("Unexpected message")
         return payload
 
@@ -265,11 +299,11 @@ class NFCDev:
         else:
             payload = None
         if header.message_type in (
-            NFC_DETECTED_TAG_MESSAGE_TYPE,
-            NFC_SELECTED_TAG_MESSAGE_TYPE,
+            NFCMessageType.DETECTED_TAG,
+            NFCMessageType.SELECTED_TAG,
         ):
             payload = NFCTagInfo(payload)
-        elif header.message_type == NFC_TRANSCEIVE_FRAME_RESPONSE_MESSAGE_TYPE:
+        elif header.message_type == NFCMessageType.TRANSCEIVE_FRAME_RESPONSE:
             payload = NFCTransceiveFrameResponseMessage(payload)
         return header, payload
 

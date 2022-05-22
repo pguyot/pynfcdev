@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+import asyncio
 
 import nfcdev
 
@@ -145,46 +147,63 @@ def print_st25tb_tag_info(tag_info):
     print(f"Serial number: {serial}")
 
 
-with nfcdev.NFCDev("/dev/nfc0") as nfc:
+class DetectRemoval(nfcdev.NFCDevStateDetectRemoval):
+    def __init__(self, fsm, tag_type, tag_info):
+        super().__init__(fsm, tag_type, tag_info, 0)
+
+    def process_removed_tag(self, tag_type, tag_id):
+        print(f"Tag was removed")
+        self.fsm.write_message(nfcdev.NFCIdleModeRequestMessage())
+        return DiscoverTags(self.fsm)
+
+    def process_detected_tag(self, tag_type, tag_info):
+        print(f"Another tag was detected")
+        self.fsm.write_message(nfcdev.NFCIdleModeRequestMessage())
+        return DiscoverTags(self.fsm)
+
+
+class DiscoverTags(nfcdev.NFCDevStateDiscover):
+    def __init__(self, fsm):
+        super().__init__(fsm, nfcdev.NFCTagProtocol.ALL, 0, 0, 0, 0)
+
+    def process_detected_tag(self, tag_type, tag_info):
+        if tag_type == nfcdev.NFCTagType.ISO14443A:
+            print("ISO-14443-A generic tag")
+            print_iso14443a_tag_info(tag_info)
+        elif tag_type == nfcdev.NFCTagType.ISO14443A_T2T:
+            print("ISO-14443-A T2T tag")
+            print_iso14443a_tag_info(tag_info)
+        elif tag_type == nfcdev.NFCTagType.MIFARE_CLASSIC:
+            print("MIFARE Classic tag")
+            print_mifare_classic_tag_info(tag_info)
+        elif tag_type == nfcdev.NFCTagType.ISO14443A_NFCDEP:
+            print("ISO-14443-A tag with NFCDEP")
+            print_iso14443a_tag_info(tag_info)
+        elif tag_type == nfcdev.NFCTagType.ISO14443A_T4T:
+            print("ISO-14443-A-4 (T4T) tag")
+            print_iso14443a4_tag_info(tag_info)
+        elif tag_type == nfcdev.NFCTagType.ISO14443A_T4T_NFCDEP:
+            print("ISO-14443-A-4 (T4T) tag with NFCDEP")
+            print_iso14443a4_tag_info(tag_info)
+        elif tag_type == nfcdev.NFCTagType.ISO14443B:
+            print("ISO-14443-B tag")
+            print_iso14443b_tag_info(tag_info)
+        elif tag_type == nfcdev.NFCTagType.ST25TB:
+            print("ST25TB tag")
+            print_st25tb_tag_info(tag_info)
+        print()
+        return DetectRemoval(self.fsm, tag_type, tag_info)
+
+
+loop = asyncio.get_event_loop()
+
+with nfcdev.NFCDevStateMachine(loop, "/dev/nfc0") as fsm:
     print("Version check: {nfc.check_version()}")
     print("Chip model: {nfc.get_identify_chip_model()}")
     print("Discovering tags (exit with control-C)\n")
-    nfc.write_message(
-        nfcdev.NFCDiscoverModeRequestMessage(nfcdev.NFCTagProtocol.ALL, 0, 0, 0, 0)
-    )
 
-    while True:
-        try:
-            header, payload = nfc.read_message()
-
-            if header.message_type == nfcdev.NFCMessageType.DETECTED_TAG:
-                tag_info = payload
-                if tag_info.tag_type == nfcdev.NFCTagType.ISO14443A:
-                    print("ISO-14443-A generic tag")
-                    print_iso14443a_tag_info(tag_info.tag_info)
-                elif tag_info.tag_type == nfcdev.NFCTagType.ISO14443A_T2T:
-                    print("ISO-14443-A T2T tag")
-                    print_iso14443a_tag_info(tag_info.tag_info)
-                elif tag_info.tag_type == nfcdev.NFCTagType.MIFARE_CLASSIC:
-                    print("MIFARE Classic tag")
-                    print_mifare_classic_tag_info(tag_info.tag_info)
-                elif tag_info.tag_type == nfcdev.NFCTagType.ISO14443A_NFCDEP:
-                    print("ISO-14443-A tag with NFCDEP")
-                    print_iso14443a_tag_info(tag_info.tag_info)
-                elif tag_info.tag_type == nfcdev.NFCTagType.ISO14443A_T4T:
-                    print("ISO-14443-A-4 (T4T) tag")
-                    print_iso14443a4_tag_info(tag_info.tag_info)
-                elif tag_info.tag_type == nfcdev.NFCTagType.ISO14443A_T4T_NFCDEP:
-                    print("ISO-14443-A-4 (T4T) tag with NFCDEP")
-                    print_iso14443a4_tag_info(tag_info.tag_info)
-                elif tag_info.tag_type == nfcdev.NFCTagType.ISO14443B:
-                    print("ISO-14443-B tag")
-                    print_iso14443b_tag_info(tag_info.tag_info)
-                elif tag_info.tag_type == nfcdev.NFCTagType.ST25TB:
-                    print("ST25TB tag")
-                    print_st25tb_tag_info(tag_info.tag_info)
-                print()
-            else:
-                print(f"Unexpected message (type={header.message_type})")
-        except KeyboardInterrupt:
-            break
+    try:
+        fsm.set_state(DiscoverTags(fsm))
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
