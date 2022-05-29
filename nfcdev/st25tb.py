@@ -6,8 +6,12 @@ Declarations and classes related to ST25TB tags.
 
 from abc import abstractmethod
 from enum import IntEnum
-from .statem import NFCDevState
+from typing import List
+import logging
+
+from .statem import NFCDevState, NFCDevStateMachine
 from .nfcdev import (
+    NFCMessageHeader,
     NFCMessageType,
     NFCTransceiveFlags,
     NFCTransceiveFrameRequestMessage,
@@ -20,17 +24,17 @@ class ST25TBCommand(IntEnum):
 
 
 class NFCDevStateST25TBReadBlocks(NFCDevState):
-    def __init__(self, fsm, blocks):
+    def __init__(self, fsm: NFCDevStateMachine, blocks: List[int]):
         super().__init__(fsm)
         self.__data = b""
         self.__blocks = blocks
         fsm.write_message(
             NFCTransceiveFrameRequestMessage(
-                bytearray([ST25TBCommand.READ_BLOCK, self.__blocks[0]])
+                bytearray([ST25TBCommand.READ_BLOCK, self.__blocks[0]]), 302
             )
         )
 
-    def process_message(self, header, payload):
+    def process_message(self, header: NFCMessageHeader, payload):
         if header.message_type == NFCMessageType.TRANSCEIVE_FRAME_RESPONSE:
             if payload.flags & NFCTransceiveFlags.ERROR:
                 return self.failure()
@@ -48,6 +52,7 @@ class NFCDevStateST25TBReadBlocks(NFCDevState):
                             self.__blocks[0],
                         ]
                     ),
+                    302,
                 )
             )
             return self
@@ -76,7 +81,7 @@ class NFCDevStateST25TBReadBlocks(NFCDevState):
 
 
 class NFCDevStateST25TBWriteBlocks(NFCDevState):
-    def __init__(self, fsm, blocks, data):
+    def __init__(self, fsm: NFCDevStateMachine, blocks, data):
         super().__init__(fsm)
         self.__data = data
         self.__blocks = blocks
@@ -89,16 +94,19 @@ class NFCDevStateST25TBWriteBlocks(NFCDevState):
             self.fsm.write_message(
                 NFCTransceiveFrameRequestMessage(
                     tx_data,
+                    7000,  # We should wait for 7ms
                     NFCTransceiveFlags.TX_ONLY,
                 )
             )
         else:
             # Read system block to make sure the tag is still here.
             self.fsm.write_message(
-                NFCTransceiveFrameRequestMessage(bytes([ST25TBCommand.READ_BLOCK, 255]))
+                NFCTransceiveFrameRequestMessage(
+                    bytes([ST25TBCommand.READ_BLOCK, 255]), 302
+                )
             )
 
-    def process_message(self, header, payload):
+    def process_message(self, header: NFCMessageHeader, payload):
         if header.message_type == NFCMessageType.TRANSCEIVE_FRAME_RESPONSE:
             if payload.flags & NFCTransceiveFlags.ERROR:
                 return self.failure()
@@ -115,8 +123,7 @@ class NFCDevStateST25TBWriteBlocks(NFCDevState):
             self.__blocks = self.__blocks[1:]
             self.__data = self.__data[4:]
             # Write next block or start final read.
-            # We should only do this after 7ms
-            self.fsm.loop.call_later(0.007, self._transmit_next_frame)
+            self._transmit_next_frame()
         else:
             logging.error(
                 "Unexpected packet from RFID device, "

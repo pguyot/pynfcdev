@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+from abc import ABC, abstractmethod
 import os
 import fcntl
 import array
 import struct
 import ctypes
+from typing import SupportsBytes, Optional, Tuple
 from enum import IntEnum, IntFlag
 from io import FileIO
-from ioctl_opt import IOR
+from ioctl_opt import IOR  # type: ignore
 
 NFC_RD_GET_PROTOCOL_VERSION = IOR(ord("N"), 0, ctypes.c_uint64)
 NFC_PROTOCOL_VERSION_1 = 0x004E464300000001
@@ -94,10 +96,6 @@ class NFCDiscoverFlags(IntFlag):
     SELECT = 1
 
 
-T2T_COMMAND_READ_BLOCK = 0x30
-T2T_COMMAND_WRITE_BLOCK = 0xA2
-
-
 class NFCMessageHeader(ctypes.Structure):
     _pack_ = 1
     _fields_ = [("message_type", ctypes.c_uint8), ("payload_length", ctypes.c_uint16)]
@@ -107,36 +105,51 @@ class NFCMessageHeader(ctypes.Structure):
         self.payload_length = payload_length
 
 
-class NFCIdentityRequestMessage(NFCMessageHeader):
-    def __init__(self):
-        super().__init__(NFCMessageType.IDENTIFY_REQUEST, 0)
+class NFCRequestMessage(SupportsBytes):
+    pass
 
 
-class NFCDiscoverModeRequestMessage(ctypes.Structure):
-    _pack_ = 1
-    _fields_ = [
-        ("message_type", ctypes.c_uint8),
-        ("payload_length", ctypes.c_uint16),
-        ("protocols", ctypes.c_uint64),
-        ("polling_period", ctypes.c_uint32),
-        ("device_count", ctypes.c_uint8),
-        ("max_bitrate", ctypes.c_uint8),
-        ("flags", ctypes.c_uint8),
-    ]
+class NFCIdentityRequestMessage(NFCRequestMessage):
+    def __bytes__(self):
+        header = bytes(NFCMessageHeader(NFCMessageType.IDENTIFY_REQUEST, 0))
+        return header
+
+
+class NFCDiscoverModeRequestMessage(NFCRequestMessage):
+    class Payload(ctypes.Structure):
+        _pack_ = 1
+        _fields_ = [
+            ("protocols", ctypes.c_uint64),
+            ("polling_period", ctypes.c_uint32),
+            ("device_count", ctypes.c_uint8),
+            ("max_bitrate", ctypes.c_uint8),
+            ("flags", ctypes.c_uint8),
+        ]
+
+        def __init__(self, protocols, polling_period, device_count, max_bitrate, flags):
+            self.protocols = protocols
+            self.polling_period = polling_period
+            self.device_count = device_count
+            self.max_bitrate = max_bitrate
+            self.flags = flags
 
     def __init__(self, protocols, polling_period, device_count, max_bitrate, flags):
-        self.message_type = NFCMessageType.DISCOVER_MODE_REQUEST
-        self.payload_length = 15
-        self.protocols = protocols
-        self.polling_period = polling_period
-        self.device_count = device_count
-        self.max_bitrate = max_bitrate
-        self.flags = flags
+        self.payload = NFCDiscoverModeRequestMessage.Payload(
+            protocols, polling_period, device_count, max_bitrate, flags
+        )
+
+    def __bytes__(self):
+        payload = bytes(self.payload)
+        header = bytes(
+            NFCMessageHeader(NFCMessageType.DISCOVER_MODE_REQUEST, len(payload))
+        )
+        return header + payload
 
 
-class NFCIdleModeRequestMessage(NFCMessageHeader):
-    def __init__(self):
-        super().__init__(NFCMessageType.IDLE_MODE_REQUEST, 0)
+class NFCIdleModeRequestMessage(NFCRequestMessage):
+    def __bytes__(self):
+        header = bytes(NFCMessageHeader(NFCMessageType.IDLE_MODE_REQUEST, 0))
+        return header
 
 
 class NFCTagInfoISO14443A:
@@ -187,7 +200,21 @@ class NFCTagInfoST25TB:
         return f"<uid={self.uid}>"
 
 
-class NFCTagInfo:
+class NFCResponsePayload(ABC):
+    pass
+
+
+class NFCIdentifyResponsePayload(NFCResponsePayload):
+    def __init__(self, bytes):
+        self.chip_model = bytes
+
+
+class NFCUnknownResponsePayload(NFCResponsePayload):
+    def __init__(self, bytes):
+        self.bytes = bytes
+
+
+class NFCTagInfo(NFCResponsePayload):
     def __init__(self, packed):
         self.tag_type = NFCTagType(packed[0])
         if (
@@ -211,7 +238,7 @@ class NFCTagInfo:
         return f"TagInfo<type={self.tag_type}, info={self.tag_info}>"
 
 
-class NFCSelectTagMessage(ctypes.Structure):
+class NFCSelectTagMessage(NFCRequestMessage):
     def __init__(self, tag_type, tag_uid):
         self.tag_type = tag_type
         self.tag_uid = tag_uid
@@ -226,32 +253,48 @@ class NFCSelectTagMessage(ctypes.Structure):
 
 
 class NFCTransceiveFlags(IntFlag):
-    NOCRC = 1 << 0
-    NOPARITY = 1 << 1
+    # Do not send CRC
+    NOCRC_TX = 1 << 0
+    NOPAR_TX = 1 << 1
     # TX and RX partial bits, tx_count in bits
     BITS = 1 << 2
     # Do not receive data
     TX_ONLY = 1 << 3
+    # Timeout not considered an error (passive ACK)
+    TIMEOUT = 1 << 4
+    # Do not check CRC on Rx
+    NOCRC_RX = 1 << 5
+    # Do not decode/expect parity bits on Rx
+    NOPAR_RX = 1 << 6
     # Transceive failed, chip is unselected and field is turned off.
     ERROR = 1 << 7
 
 
-class NFCTransceiveFrameRequestMessage:
-    def __init__(self, data, flags=0, tx_count=None):
+class NFCTransceiveFrameRequestMessage(NFCRequestMessage):
+    def __init__(self, data, rx_timeout, flags=0, tx_count=None):
         self.data = data
         self.flags = flags
-        self.tx_count = tx_count or len(data)
+        self.rx_timeout = rx_timeout
+        if tx_count:
+            self.tx_count = tx_count
+        elif flags & NFCTransceiveFlags.BITS:
+            self.tx_count = len(data) * 8
+        else:
+            self.tx_count = len(data)
 
     def __bytes__(self):
-        payload = struct.pack("=HB", self.tx_count, int(self.flags)) + self.data
+        payload = (
+            struct.pack("=HHB", self.tx_count, self.rx_timeout, int(self.flags))
+            + self.data
+        )
         header = bytes(
             NFCMessageHeader(NFCMessageType.TRANSCEIVE_FRAME_REQUEST, len(payload))
         )
         return header + payload
 
 
-class NFCTransceiveFrameResponseMessage:
-    def __init__(self, packed):
+class NFCTransceiveFrameResponsePayload(NFCResponsePayload):
+    def __init__(self, packed: bytes):
         self.rx_count, self.flags = struct.unpack("=HB", packed[0:3])
         self.data = packed[3:]
 
@@ -284,27 +327,32 @@ class NFCDev:
         (version,) = struct.unpack("Q", b)
         return version == NFC_PROTOCOL_VERSION_1
 
-    def get_identify_chip_model(self):
+    def get_identify_chip_model(self) -> str:
         self.write_message(NFCIdentityRequestMessage())
         header, payload = self.read_message()
         if header.message_type != NFCMessageType.IDENTIFY_RESPONSE:
-            raise ("Unexpected message")
-        return payload
+            raise ValueError("Unexpected message")
+        if not isinstance(payload, NFCIdentifyResponsePayload):
+            raise ValueError("Unexpected message")
+        return payload.chip_model
 
-    def read_message(self):
+    def read_message(self) -> Tuple[NFCMessageHeader, Optional[NFCResponsePayload]]:
         header = NFCMessageHeader()
         self.file.readinto(header)
+        payload: Optional[NFCResponsePayload] = None
         if header.payload_length > 0:
-            payload = self.file.read(header.payload_length)
-        else:
-            payload = None
-        if header.message_type in (
-            NFCMessageType.DETECTED_TAG,
-            NFCMessageType.SELECTED_TAG,
-        ):
-            payload = NFCTagInfo(payload)
-        elif header.message_type == NFCMessageType.TRANSCEIVE_FRAME_RESPONSE:
-            payload = NFCTransceiveFrameResponseMessage(payload)
+            payload_bytes = self.file.read(header.payload_length)
+            if header.message_type in (
+                NFCMessageType.DETECTED_TAG,
+                NFCMessageType.SELECTED_TAG,
+            ):
+                payload = NFCTagInfo(payload_bytes)
+            elif header.message_type == NFCMessageType.TRANSCEIVE_FRAME_RESPONSE:
+                payload = NFCTransceiveFrameResponsePayload(payload_bytes)
+            elif header.message_type == NFCMessageType.IDENTIFY_RESPONSE:
+                payload = NFCIdentifyResponsePayload(payload_bytes)
+            else:
+                payload = NFCUnknownResponsePayload(payload_bytes)
         return header, payload
 
     def write_message(self, message):

@@ -9,7 +9,17 @@ import logging
 import asyncio
 from enum import Enum
 
-from . import nfcdev
+
+from .nfcdev import (
+    NFCDev,
+    NFCMessageHeader,
+    NFCMessageType,
+    NFCSelectTagMessage,
+    NFCTagProtocol,
+    NFCDiscoverModeRequestMessage,
+    NFCIdleModeRequestMessage,
+    NFCTransceiveFrameRequestMessage,
+)
 
 
 class NFCDeviceState(Enum):
@@ -21,11 +31,11 @@ class NFCDeviceState(Enum):
 
 
 class NFCDevState(ABC):
-    def __init__(self, fsm):
+    def __init__(self, fsm: "NFCDevStateMachine"):
         self.fsm = fsm
 
     @abstractmethod
-    def process_message(self, header, payload):
+    def process_message(self, header, payload) -> "NFCDevState":
         """
         Process a message.
         Return the new state (can be self)
@@ -34,8 +44,8 @@ class NFCDevState(ABC):
 
 
 class NFCDevStateDisabled(NFCDevState):
-    def process_message(self, header, payload):
-        if header.message_type != nfcdev.NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
+    def process_message(self, header, payload) -> NFCDevState:
+        if header.message_type != NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
             logging.error(
                 "Unexpected packet from RFID device, "
                 f"header={header}, payload={payload}"
@@ -45,7 +55,13 @@ class NFCDevStateDisabled(NFCDevState):
 
 class NFCDevStateDiscover(NFCDevState):
     def __init__(
-        self, fsm, protocols, polling_period, device_count, max_bitrate, flags
+        self,
+        fsm: "NFCDevStateMachine",
+        protocols,
+        polling_period,
+        device_count,
+        max_bitrate,
+        flags,
     ):
         super().__init__(fsm)
         self.__protocols = protocols
@@ -56,9 +72,9 @@ class NFCDevStateDiscover(NFCDevState):
         if self.fsm.get_device_state() == NFCDeviceState.IDLE:
             self.enter_from_idle()
 
-    def enter_from_idle(self):
+    def enter_from_idle(self) -> NFCDevState:
         self.fsm.write_message(
-            nfcdev.NFCDiscoverModeRequestMessage(
+            NFCDiscoverModeRequestMessage(
                 self.__protocols,
                 self.__polling_period,
                 self.__device_count,
@@ -66,36 +82,36 @@ class NFCDevStateDiscover(NFCDevState):
                 self.__flags,
             )
         )
+        return self
 
-    def process_message(self, header, payload):
-        if header.message_type == nfcdev.NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
-            self.enter_from_idle()
-            return self
-        if header.message_type == nfcdev.NFCMessageType.SELECTED_TAG:
+    def process_message(self, header, payload) -> NFCDevState:
+        if header.message_type == NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
+            return self.enter_from_idle()
+        if header.message_type == NFCMessageType.SELECTED_TAG:
             return self.process_selected_tag(payload.tag_type, payload.tag_info)
-        if header.message_type == nfcdev.NFCMessageType.DETECTED_TAG:
+        if header.message_type == NFCMessageType.DETECTED_TAG:
             return self.process_detected_tag(payload.tag_type, payload.tag_info)
         logging.error(
             "Unexpected packet from RFID device, " f"header={header}, payload={payload}"
         )
         return self
 
-    def process_selected_tag(self, tag_type, tag_info):
+    def process_selected_tag(self, tag_type, tag_info) -> NFCDevState:
         """
         Process selected tag.
         By default unselect it by turning field off and returning to idle mode
         """
-        self.fsm.write_message(nfcdev.NFCIdleModeRequestMessage())
+        self.fsm.write_message(NFCIdleModeRequestMessage())
         return self
 
-    def process_detected_tag(self, tag_type, tag_info):
+    def process_detected_tag(self, tag_type, tag_info) -> NFCDevState:
         return self
 
 
 class NFCDevStateDetectRemoval(NFCDevState):
     REMOVED_TIMEOUT = 1.5
 
-    def __init__(self, fsm, tag_type, tag_info, polling_period):
+    def __init__(self, fsm: "NFCDevStateMachine", tag_type, tag_info, polling_period):
         super().__init__(fsm)
         self.__tag_type = tag_type
         self.__tag_id = tag_info.tag_id()
@@ -117,13 +133,13 @@ class NFCDevStateDetectRemoval(NFCDevState):
     def _timer_cb(self):
         self.fsm.set_state(self.process_removed_tag(self.__tag_type, self.__tag_id))
 
-    def enter_from_idle(self):
+    def enter_from_idle(self) -> NFCDevState:
         """
         Only listen to current tag's protocol
         """
-        protocol = nfcdev.NFCTagProtocol.type_to_most_specific_protocol(self.__tag_type)
+        protocol = NFCTagProtocol.type_to_most_specific_protocol(self.__tag_type)
         self.fsm.write_message(
-            nfcdev.NFCDiscoverModeRequestMessage(
+            NFCDiscoverModeRequestMessage(
                 protocol,
                 self.__polling_period,
                 1,
@@ -132,12 +148,12 @@ class NFCDevStateDetectRemoval(NFCDevState):
             )
         )
         self._start_timer()
+        return self
 
-    def process_message(self, header, payload):
-        if header.message_type == nfcdev.NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
-            self.enter_from_idle()
-            return self
-        if header.message_type == nfcdev.NFCMessageType.DETECTED_TAG:
+    def process_message(self, header, payload) -> NFCDevState:
+        if header.message_type == NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
+            return self.enter_from_idle()
+        if header.message_type == NFCMessageType.DETECTED_TAG:
             self._cancel_timer()
             if payload.tag_info.tag_id() == self.__tag_id:
                 self._start_timer()
@@ -149,10 +165,10 @@ class NFCDevStateDetectRemoval(NFCDevState):
         return self
 
     @abstractmethod
-    def process_removed_tag(self, tag_type, tag_id):
+    def process_removed_tag(self, tag_type, tag_id) -> NFCDevState:
         pass
 
-    def process_detected_tag(self, tag_type, tag_info):
+    def process_detected_tag(self, tag_type, tag_info) -> NFCDevState:
         """
         Another tag was detected.
         By default, call process_removed_tag (and ignore the new tag)
@@ -161,7 +177,7 @@ class NFCDevStateDetectRemoval(NFCDevState):
 
 
 class NFCDevStateSelect(NFCDevState):
-    def __init__(self, fsm, tag_type, tag_id):
+    def __init__(self, fsm: "NFCDevStateMachine", tag_type, tag_id):
         super().__init__(fsm)
         self.__tag_type = tag_type
         self.__tag_id = tag_id
@@ -169,31 +185,31 @@ class NFCDevStateSelect(NFCDevState):
         if self.fsm.get_device_state() == NFCDeviceState.IDLE:
             self.enter_from_idle()
 
-    def enter_from_idle(self):
+    def enter_from_idle(self) -> NFCDevState:
         self.fsm.write_message(
-            nfcdev.NFCSelectTagMessage(
+            NFCSelectTagMessage(
                 self.__tag_type,
                 self.__tag_id,
             )
         )
+        return self
 
-    def process_message(self, header, payload):
-        if header.message_type == nfcdev.NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
-            self.enter_from_idle()
-            return self
-        if header.message_type == nfcdev.NFCMessageType.SELECTED_TAG:
+    def process_message(self, header: NFCMessageHeader, payload):
+        if header.message_type == NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
+            return self.enter_from_idle()
+        if header.message_type == NFCMessageType.SELECTED_TAG:
             return self.process_selected_tag(payload.tag_type, payload.tag_info)
         logging.error(
             "Unexpected packet from RFID device, " f"header={header}, payload={payload}"
         )
         return self
 
-    def process_selected_tag(self, tag_type, tag_info):
+    def process_selected_tag(self, tag_type, tag_info) -> NFCDevState:
         """
         Process selected tag.
         By default unselect it by turning field off and returning to idle mode
         """
-        self.fsm.write_message(nfcdev.NFCIdleModeRequestMessage())
+        self.fsm.write_message(NFCIdleModeRequestMessage())
         return self
 
 
@@ -203,7 +219,7 @@ class NFCDevStateMachine:
     """
 
     def __init__(self, loop, path="/dev/nfc0"):
-        self.__dev = nfcdev.NFCDev(path)
+        self.__dev = NFCDev(path)
         self.loop = loop
 
     def __enter__(self):
@@ -236,11 +252,11 @@ class NFCDevStateMachine:
         Called from state handlers
         Mirrors the device state
         """
-        if message.__class__ == nfcdev.NFCDiscoverModeRequestMessage:
+        if message.__class__ == NFCDiscoverModeRequestMessage:
             self.__device_state = NFCDeviceState.DISCOVER
-        elif message.__class__ == nfcdev.NFCSelectTagMessage:
+        elif message.__class__ == NFCSelectTagMessage:
             self.__device_state = NFCDeviceState.SELECT
-        elif message.__class__ == nfcdev.NFCTransceiveFrameRequestMessage:
+        elif message.__class__ == NFCTransceiveFrameRequestMessage:
             self.__device_state = NFCDeviceState.TRANSCEIVE_FRAME
         self.__dev.write_message(message)
 
@@ -249,10 +265,10 @@ class NFCDevStateMachine:
         Asyncio read callback.
         """
         header, payload = self.__dev.read_message()
-        if header.message_type == nfcdev.NFCMessageType.SELECTED_TAG:
+        if header.message_type == NFCMessageType.SELECTED_TAG:
             self.__device_state = NFCDeviceState.SELECTED
-        elif header.message_type == nfcdev.NFCMessageType.TRANSCEIVE_FRAME_RESPONSE:
+        elif header.message_type == NFCMessageType.TRANSCEIVE_FRAME_RESPONSE:
             self.__device_state = NFCDeviceState.SELECTED
-        elif header.message_type == nfcdev.NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
+        elif header.message_type == NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
             self.__device_state = NFCDeviceState.IDLE
         self.__state = self.__state.process_message(header, payload)
