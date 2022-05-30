@@ -339,10 +339,7 @@ class TLVNDEFMessageBlock(TLVBlock):
             self.ndef: Optional[NDEFMessage] = None
         elif isinstance(arg, bytes):
             super().__init__(TLVBlockType.NDEF_MESSAGE, arg)
-            try:
-                self.ndef = ndef.NdefMessage(arg)
-            except ndef.ndef.InvalidNdefMessage:
-                self.ndef = None
+            self.ndef = ndef.NdefMessage(arg)
         else:
             super().__init__(TLVBlockType.NDEF_MESSAGE, arg.to_buffer())
             self.ndef = arg
@@ -384,14 +381,14 @@ class NFCDevStateT2TReadNDEF(NFCDevState):
             self.__failure_cb = failure_cb
 
         def success(self, data):
-            blocks = TLVBlock.parse_blocks(self.__first_blocks + data)
-            ndef_messages = [
-                block.ndef for block in blocks if isinstance(block, TLVNDEFMessageBlock)
-            ]
-            if None in ndef_messages:
-                return self.__failure_cb(OSError())
-            else:
+            try:
+                blocks = TLVBlock.parse_blocks(self.__first_blocks + data)
+                ndef_messages = [
+                    block.ndef for block in blocks if isinstance(block, TLVNDEFMessageBlock)
+                ]
                 return self.__success_cb(ndef_messages, self.__locked)
+            except ndef.ndef.InvalidNdefMessage:
+                return self.__failure_cb(OSError())
 
         def failure(self, ex: BaseException):
             return self.__failure_cb(ex)

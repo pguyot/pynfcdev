@@ -12,14 +12,17 @@ class ReadNDEF(nfcdev.NFCDevStateT2TReadNDEF):
 
     def success(self, messages, locked):
         print("messages:")
-        for message in messages:
-            print("  message:")
-            for record in message.records:
-                print("  record:")
-                print(f"    tnf: {record.tnf}")
-                print(f"    type: {record.type}")
-                print(f"    id: {record.id}")
-                print(f"    payload: {record.payload}")
+        if messages == [None]:
+            print("  empty")
+        else:
+            for message in messages:
+                print("  message:")
+                for record in message.records:
+                    print("  record:")
+                    print(f"    tnf: {record.tnf}")
+                    print(f"    type: {record.type}")
+                    print(f"    id: {record.id}")
+                    print(f"    payload: {record.payload}")
 
         self.fsm.write_message(nfcdev.NFCIdleModeRequestMessage())
         return SelectTag(self.fsm)
