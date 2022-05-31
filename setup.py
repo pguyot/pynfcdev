@@ -2,12 +2,13 @@ from setuptools import setup
 
 setup(
     name="pynfcdev",
-    version="0.5.0",
+    version="0.7.0",
     description="Python package to use /dev/nfc* interface provided by ST25R391x driver",
     url="https://github.com/pguyot/pynfcdev",
     author="Paul Guyot",
     author_email="pguyot@kallisys.net",
     license="GPLv2+",
+    package_data={"nfcdev": ["py.typed"]},
     packages=["nfcdev"],
     install_requires=[
         "ioctl_opt",
