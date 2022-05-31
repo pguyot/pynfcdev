@@ -4,16 +4,13 @@
 Declarations and classes related to NFC type 2 tags.
 """
 
+import errno
 from abc import abstractmethod
-from enum import Enum, IntEnum
+from enum import IntEnum
 from typing import Any, Callable, List, Optional, Tuple, Union
-import logging
 
 import ndef  # type: ignore
 
-NDEFMessage = Any
-
-from .statem import NFCDevState, NFCDevStateMachine
 from .nfcdev import (
     NFCMessageHeader,
     NFCMessageType,
@@ -22,6 +19,9 @@ from .nfcdev import (
     NFCTransceiveFrameRequestMessage,
     NFCTransceiveFrameResponsePayload,
 )
+from .statem import NFCDevState, NFCDevStateMachine
+
+NDEFMessage = Any
 
 
 class T2TCommand(IntEnum):
@@ -283,7 +283,7 @@ class TLVBlock:
             tlv_length = data[2] << 8 + data[3]
             data_ix = 4
         if tlv_length > 0:
-            tlv_data = data[data_ix : (data_ix + tlv_length)]
+            tlv_data: Optional[bytes] = data[data_ix : (data_ix + tlv_length)]
         else:
             tlv_data = None
         if tlv_type == TLVBlockType.LOCK_CONTROL:
@@ -384,7 +384,9 @@ class NFCDevStateT2TReadNDEF(NFCDevState):
             try:
                 blocks = TLVBlock.parse_blocks(self.__first_blocks + data)
                 ndef_messages = [
-                    block.ndef for block in blocks if isinstance(block, TLVNDEFMessageBlock)
+                    block.ndef
+                    for block in blocks
+                    if isinstance(block, TLVNDEFMessageBlock)
                 ]
                 return self.__success_cb(ndef_messages, self.__locked)
             except ndef.ndef.InvalidNdefMessage:
@@ -511,7 +513,8 @@ class NFCDevStateT2TWriteNDEF(NFCDevState):
                 return self.__failure_cb(
                     OSError(
                         errno.ENOSPC,
-                        f"Cannot write {len(new_blocks_bin)} bytes, max is {len(original_tlv_bin)}",
+                        f"Cannot write {len(new_blocks_bin)} bytes, "
+                        f"max is {len(original_tlv_bin)}",
                     )
                 )
             # Pad new_blocks

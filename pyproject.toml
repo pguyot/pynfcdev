@@ -1,0 +1,28 @@
+[project]
+name = "pynfcdev"
+version = "0.7.2"
+description = "Python package to use /dev/nfc* interface"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {file = "LICENSE"}
+keywords = ["nfc", "rfid"]
+authors = [
+  {email = "pguyot@kallisys.net"},
+  {name = "Paul Guyot"}
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python",
+]
+
+dependencies = [
+  "ioctl_opt",
+  "ndef"
+]
+
+[project.urls]
+homepage = "https://github.com/pguyot/pynfcdev"
+repository = "https://github.com"

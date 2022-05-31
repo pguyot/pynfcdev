@@ -45,7 +45,12 @@ if __name__ == "__main__":
     if erase:
         messages = []
     else:
-        text_record = (ndef.TNF_WELL_KNOWN, ndef.RTD_TEXT, b"id", b"hello world")
+        text_record = (
+            ndef.TNF_WELL_KNOWN,
+            ndef.RTD_TEXT,
+            b"id",
+            b"hello world",
+        )
         text_message = ndef.new_message(text_record)
         messages = [text_message]
     try:
@@ -53,7 +58,7 @@ if __name__ == "__main__":
         if len(uid) not in (4, 7, 10):
             raise ValueError("Invalid length")
     except ValueError:
-        print(f"Invalid UID string. Expected 4, 7 or 10 bytes in hex.")
+        print("Invalid UID string. Expected 4, 7 or 10 bytes in hex.")
         sys.exit(1)
 
     loop = asyncio.get_event_loop()

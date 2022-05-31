@@ -13,7 +13,7 @@ def process_st25tb_tag(nfc, tag_info):
     if uid_be[0] != 0xD0:
         print(f"Unexpected MSB, got {uid_be[0]}")
     if uid_be[1] != 0x02:
-        print(f"Not a STMicroelectronics chip, will read block 255 anyway")
+        print("Not a STMicroelectronics chip, will read block 255 anyway")
     nfc.write_message(
         nfcdev.NFCTransceiveFrameRequestMessage(
             bytearray([nfcdev.ST25TBCommand.READ_BLOCK, 255])
@@ -23,7 +23,7 @@ def process_st25tb_tag(nfc, tag_info):
 
     if header.message_type == nfcdev.NFCMessageType.TRANSCEIVE_FRAME_RESPONSE:
         if payload.flags & nfcdev.NFCTransceiveFlags.ERROR:
-            print(f"Read error (tag removed?)")
+            print("Read error (tag removed?)")
             return
         elif payload.rx_count != 6:
             print(f"Unexpected response length, rx_count={payload.rx_count} != 6")
@@ -45,7 +45,7 @@ def process_st25tb_tag(nfc, tag_info):
 
         if header.message_type == nfcdev.NFCMessageType.TRANSCEIVE_FRAME_RESPONSE:
             if payload.flags & nfcdev.NFCTransceiveFlags.ERROR:
-                print(f"Read error (tag removed?)")
+                print("Read error (tag removed?)")
                 return
             elif payload.rx_count != 6:
                 print(f"Unexpected response length, rx_count={payload.rx_count} != 6")
@@ -64,7 +64,11 @@ with nfcdev.NFCDev("/dev/nfc0") as nfc:
     print("Selecting ST25TB tags (exit with control-C)\n")
     nfc.write_message(
         nfcdev.NFCDiscoverModeRequestMessage(
-            nfcdev.NFCTagProtocol.ST25TB, 0, 0, 0, nfcdev.NFCDiscoverFlags.SELECT
+            nfcdev.NFCTagProtocol.ST25TB,
+            0,
+            0,
+            0,
+            nfcdev.NFCDiscoverFlags.SELECT,
         )
     )
 

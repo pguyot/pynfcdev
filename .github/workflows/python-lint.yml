@@ -1,0 +1,26 @@
+name: Python lint
+on:
+  push:
+    branches:    
+      - 'main'
+      - 'releases/**'
+  pull_request:
+
+jobs:
+  lint:
+    name: Python lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Run Python lint checks
+        uses: ricardochaves/python-lint@v1.4.0
+        with:
+          python-root-list: "nfcdev examples"
+          use-pylint: false
+          # https://github.com/PyCQA/pycodestyle/issues/373
+          extra-pycodestyle-options: "--max-line-length=88 --ignore=E203,W503"
+          extra-flake8-options: "--max-line-length 88 --extend-ignore=E203 "
+          extra-isort-options: "-l 88 --profile black --indent 4"
