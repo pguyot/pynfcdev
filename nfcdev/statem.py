@@ -4,20 +4,18 @@
 State machine to operate nfc device.
 """
 
-from abc import ABC, abstractmethod
 import logging
-import asyncio
+from abc import ABC, abstractmethod
 from enum import Enum
-
 
 from .nfcdev import (
     NFCDev,
+    NFCDiscoverModeRequestMessage,
+    NFCIdleModeRequestMessage,
     NFCMessageHeader,
     NFCMessageType,
     NFCSelectTagMessage,
     NFCTagProtocol,
-    NFCDiscoverModeRequestMessage,
-    NFCIdleModeRequestMessage,
     NFCTransceiveFrameRequestMessage,
 )
 
@@ -262,7 +260,7 @@ class NFCDevStateMachine:
 
     def _read_from_device(self):
         """
-        Asyncio read callback.
+        Read callback.
         """
         header, payload = self.__dev.read_message()
         if header.message_type == NFCMessageType.SELECTED_TAG:

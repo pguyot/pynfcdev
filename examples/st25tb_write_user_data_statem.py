@@ -51,7 +51,7 @@ if __name__ == "__main__":
         if len(uid) != 8:
             raise ValueError("Invalid length")
     except ValueError:
-        print(f"Invalid UID string. Expected 8 bytes in hex.")
+        print("Invalid UID string. Expected 8 bytes in hex.")
         sys.exit(1)
 
     loop = asyncio.get_event_loop()

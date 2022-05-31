@@ -4,18 +4,18 @@
 Declarations and classes related to ST25TB tags.
 """
 
+import logging
 from abc import abstractmethod
 from enum import IntEnum
 from typing import List
-import logging
 
-from .statem import NFCDevState, NFCDevStateMachine
 from .nfcdev import (
     NFCMessageHeader,
     NFCMessageType,
     NFCTransceiveFlags,
     NFCTransceiveFrameRequestMessage,
 )
+from .statem import NFCDevState, NFCDevStateMachine
 
 
 class ST25TBCommand(IntEnum):

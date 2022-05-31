@@ -11,7 +11,7 @@ class ReadUserData(nfcdev.NFCDevStateST25TBReadBlocks):
         super().__init__(fsm, range(7, 16))
 
     def failure(self):
-        print(f"Read error (tag removed?)")
+        print("Read error (tag removed?)")
         self.fsm.write_message(nfcdev.NFCIdleModeRequestMessage())
         return SelectTag(self.fsm)
 
@@ -27,7 +27,7 @@ class ReadSystemBlock(nfcdev.NFCDevStateST25TBReadBlocks):
         super().__init__(fsm, [255])
 
     def failure(self):
-        print(f"Read error (tag removed?)")
+        print("Read error (tag removed?)")
         self.fsm.write_message(nfcdev.NFCIdleModeRequestMessage())
         return SelectTag(self.fsm)
 
@@ -40,7 +40,12 @@ class ReadSystemBlock(nfcdev.NFCDevStateST25TBReadBlocks):
 class SelectTag(nfcdev.NFCDevStateDiscover):
     def __init__(self, fsm):
         super().__init__(
-            fsm, nfcdev.NFCTagProtocol.ST25TB, 0, 0, 0, nfcdev.NFCDiscoverFlags.SELECT
+            fsm,
+            nfcdev.NFCTagProtocol.ST25TB,
+            0,
+            0,
+            0,
+            nfcdev.NFCDiscoverFlags.SELECT,
         )
 
     def process_selected_tag(self, tag_type, tag_info):
@@ -57,7 +62,7 @@ class SelectTag(nfcdev.NFCDevStateDiscover):
         if uid_be[0] != 0xD0:
             print(f"Unexpected MSB, got {uid_be[0]}")
         if uid_be[1] != 0x02:
-            print(f"Not a STMicroelectronics chip, will read block 255 anyway")
+            print("Not a STMicroelectronics chip, will read block 255 anyway")
         return ReadSystemBlock(self.fsm)
 
 

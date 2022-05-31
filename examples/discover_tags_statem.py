@@ -152,12 +152,12 @@ class DetectRemoval(nfcdev.NFCDevStateDetectRemoval):
         super().__init__(fsm, tag_type, tag_info, 0)
 
     def process_removed_tag(self, tag_type, tag_id):
-        print(f"Tag was removed")
+        print("Tag was removed")
         self.fsm.write_message(nfcdev.NFCIdleModeRequestMessage())
         return DiscoverTags(self.fsm)
 
     def process_detected_tag(self, tag_type, tag_info):
-        print(f"Another tag was detected")
+        print("Another tag was detected")
         self.fsm.write_message(nfcdev.NFCIdleModeRequestMessage())
         return DiscoverTags(self.fsm)
 

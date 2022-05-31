@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from abc import ABC, abstractmethod
-import os
-import fcntl
 import array
-import struct
 import ctypes
-from typing import SupportsBytes, Optional, Tuple
+import fcntl
+import os
+import struct
+from abc import ABC
 from enum import IntEnum, IntFlag
 from io import FileIO
+from typing import Optional, SupportsBytes, Tuple
+
 from ioctl_opt import IOR  # type: ignore
 
 NFC_RD_GET_PROTOCOL_VERSION = IOR(ord("N"), 0, ctypes.c_uint64)
@@ -50,7 +51,10 @@ class NFCTagType(IntEnum):
         )
 
     def is_iso14443a4(self):
-        return self.value in (NFCTagType.ISO14443A_T4T, NFCTagType.ISO14443A_T4T_NFCDEP)
+        return self.value in (
+            NFCTagType.ISO14443A_T4T,
+            NFCTagType.ISO14443A_T4T_NFCDEP,
+        )
 
 
 class NFCTagProtocol(IntFlag):
@@ -98,7 +102,10 @@ class NFCDiscoverFlags(IntFlag):
 
 class NFCMessageHeader(ctypes.Structure):
     _pack_ = 1
-    _fields_ = [("message_type", ctypes.c_uint8), ("payload_length", ctypes.c_uint16)]
+    _fields_ = [
+        ("message_type", ctypes.c_uint8),
+        ("payload_length", ctypes.c_uint16),
+    ]
 
     def __init__(self, message_type=0, payload_length=0):
         self.message_type = message_type
@@ -186,7 +193,10 @@ class NFCTagInfoISO14443B:
         return self.pupi
 
     def __str__(self):
-        return f"<pupi={self.pupi}, application_data={self.application_data}, protocol_info={self.protocol_info}>"
+        return (
+            f"<pupi={self.pupi}, application_data={self.application_data}, "
+            f"protocol_info={self.protocol_info}>"
+        )
 
 
 class NFCTagInfoST25TB:
@@ -323,7 +333,7 @@ class NFCDev:
 
     def check_version(self):
         b = array.array("Q", [0])
-        r = fcntl.ioctl(self.fd, NFC_RD_GET_PROTOCOL_VERSION, b)
+        fcntl.ioctl(self.fd, NFC_RD_GET_PROTOCOL_VERSION, b)
         (version,) = struct.unpack("Q", b)
         return version == NFC_PROTOCOL_VERSION_1
 
@@ -336,7 +346,9 @@ class NFCDev:
             raise ValueError("Unexpected message")
         return payload.chip_model
 
-    def read_message(self) -> Tuple[NFCMessageHeader, Optional[NFCResponsePayload]]:
+    def read_message(
+        self,
+    ) -> Tuple[NFCMessageHeader, Optional[NFCResponsePayload]]:
         header = NFCMessageHeader()
         self.file.readinto(header)
         payload: Optional[NFCResponsePayload] = None
