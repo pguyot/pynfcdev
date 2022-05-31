@@ -9,6 +9,7 @@ setup(
     author_email="pguyot@kallisys.net",
     license="GPLv2+",
     package_data={"nfcdev": ["py.typed"]},
+    zip_safe=False,
     packages=["nfcdev"],
     install_requires=[
         "ioctl_opt",
