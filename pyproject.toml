@@ -1,3 +1,7 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
 [project]
 name = "pynfcdev"
 version = "0.7.2"
@@ -26,3 +30,6 @@ dependencies = [
 [project.urls]
 homepage = "https://github.com/pguyot/pynfcdev"
 repository = "https://github.com"
+
+[tool.flit.module]
+name = "nfcdev"
