@@ -67,7 +67,10 @@ class NFCDevStateDiscover(NFCDevState):
         self.__device_count = device_count
         self.__max_bitrate = max_bitrate
         self.__flags = flags
-        if self.fsm.get_device_state() == NFCDeviceState.IDLE:
+        device_state = self.fsm.get_device_state()
+        if device_state == NFCDeviceState.SELECT:
+            self.fsm.write_message(NFCIdleModeRequestMessage())
+        elif device_state == NFCDeviceState.IDLE:
             self.enter_from_idle()
 
     def enter_from_idle(self) -> NFCDevState:
@@ -117,6 +120,8 @@ class NFCDevStateDetectRemoval(NFCDevState):
         self.__polling_timerhandle = None
         if self.fsm.get_device_state() == NFCDeviceState.IDLE:
             self.enter_from_idle()
+        else:
+            self.fsm.write_message(NFCIdleModeRequestMessage())
 
     def _start_timer(self):
         self.__polling_timerhandle = self.fsm.loop.call_later(
@@ -179,8 +184,10 @@ class NFCDevStateSelect(NFCDevState):
         super().__init__(fsm)
         self.__tag_type = tag_type
         self.__tag_id = tag_id
-
-        if self.fsm.get_device_state() == NFCDeviceState.IDLE:
+        device_state = self.fsm.get_device_state()
+        if device_state == NFCDeviceState.DISCOVER:
+            self.fsm.write_message(NFCIdleModeRequestMessage())
+        elif device_state == NFCDeviceState.IDLE:
             self.enter_from_idle()
 
     def enter_from_idle(self) -> NFCDevState:
