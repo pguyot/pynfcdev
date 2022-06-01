@@ -26,3 +26,8 @@ jobs:
         run: |
           pip install flit
           flit build
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: wheel
+          path: dist/*.whl
