@@ -145,7 +145,7 @@ class NFCDevStateDetectRemoval(NFCDevState):
             NFCDiscoverModeRequestMessage(
                 protocol,
                 self.__polling_period,
-                1,
+                0,
                 0,
                 0,
             )
@@ -154,7 +154,10 @@ class NFCDevStateDetectRemoval(NFCDevState):
         return self
 
     def process_message(self, header, payload) -> NFCDevState:
-        if header.message_type == NFCMessageType.IDLE_MODE_ACKNOWLEDGE:
+        if (
+            header.message_type == NFCMessageType.IDLE_MODE_ACKNOWLEDGE
+            and self.__polling_timerhandle is None
+        ):
             return self.enter_from_idle()
         if header.message_type == NFCMessageType.DETECTED_TAG:
             self._cancel_timer()
